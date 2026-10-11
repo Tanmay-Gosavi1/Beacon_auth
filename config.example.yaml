@@ -1,0 +1,71 @@
+# BEACON configuration. Copy to config.yaml and edit.
+# Every value is validated at start-up; a bad value stops the app with a clear message.
+
+camera:
+  index: 0
+  width: 1280
+  height: 720
+  read_timeout_s: 2.0          # no frame for this long -> camera failure (fail-closed)
+
+privacy:
+  blur_kernel: 31              # odd integer >= 3; should be >= 6*sigma+1 to avoid truncating the Gaussian
+  # PROVISIONAL. Offline LFW sweep (faces ~96 px wide) showed ArcFace identity collapses
+  # once sigma exceeds ~2-3% of the face width: every blurred face then matches every other.
+  # Pick the final value with scripts/calibrate_blur.py on your own webcam, then re-enroll.
+  blur_sigma: 3.0
+  save_debug_frames: false     # must stay false (not implemented on purpose)
+
+models:
+  backend_engine: tensorflow   # pinned DeepFace engine (sets DEEPFACE_BACKEND_ENGINE)
+  detector: retinaface
+  recognizer: ArcFace
+  liveness: Fasnet             # DeepFace's MiniFASNet (V2 + V1SE ensemble)
+  min_detection_confidence: 0.9
+  liveness_crop_padding: 0.0   # enlarge the blurred-frame box by this fraction before Fasnet's own context crops
+
+identity:
+  similarity_threshold: null   # MUST be calibrated (Section 12 of README); `run` refuses to start while null
+  min_face_px: 80              # faces narrower than this are counted but not identity-verified
+  min_count_face_px: 30        # faces narrower than this are ignored entirely
+
+enrollment:
+  min_samples: 15              # accepted samples required (9 poses x frames_per_pose attempts)
+  frames_per_pose: 3
+  min_template_similarity: 0.30  # mean sample-to-template similarity below this -> inconsistent capture
+  collapse_similarity: 0.97      # mean pairwise similarity above this -> blur too strong, embeddings collapsed
+
+liveness:
+  # Fasnet returns (is_real, confidence of the predicted class). Verified from deepface 0.0.102 source.
+  live_min_confidence: 0.70    # is_real and confidence >= this -> LIVE
+  spoof_min_confidence: 0.70   # not is_real and confidence >= this -> SPOOF; anything else -> UNCERTAIN
+  spoof_lock_count: 1          # consecutive SPOOF results -> LOCK_REQUIRED (synopsis: lock immediately)
+  timeout_s: 2.0               # a liveness call slower than this is discarded as UNCERTAIN
+
+trust:
+  mode: continuous             # continuous | binary_baseline (BLUFADER-style comparison mode)
+  initial: 1.0                 # trust at start-up (user has just logged in)
+  tau_rise_s: 3.0              # how slowly trust grows with verified evidence
+  tau_absent_s: 2.5            # decay with no face (after the grace period) and on errors
+  tau_mismatch_s: 1.0          # decay with a wrong identity or a spoof
+  tau_multi_s: 1.5             # decay with more than one face (policy: penalize)
+  absence_grace_s: 1.0         # short no-face gaps ignored this long
+  uncertain_hold_s: 2.0        # matched face with UNCERTAIN liveness holds trust this long, then decays
+  max_dt_s: 2.0                # cap on elapsed time per update -- applied to trust INCREASES only
+  suspect_below: 0.60
+  lock_below: 0.35
+  trusted_above: 0.70          # hysteresis: must climb back to here to be TRUSTED again
+  multi_face_policy: penalize  # penalize | lock
+  baseline_absent_frames: 10   # binary_baseline: lock after this many consecutive frames without a face
+  baseline_require_match: false  # binary_baseline: false = face-present flag only (BLUFADER-style)
+
+lock:
+  mode: dry_run                # dry_run | real
+  require_cli_flag: true       # must stay true: real mode ALSO needs --real-lock on the command line
+
+logging:
+  level: INFO
+  file: logs/beacon.log        # state transitions only; never images, embeddings or similarity vectors
+
+storage:
+  profiles_dir: profiles
+  results_dir: results

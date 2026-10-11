@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+config.yaml
+.env
+
+# Biometric data, logs and raw experiment data: never commit
+profiles/*
+!profiles/.gitkeep
+logs/*
+!logs/.gitkeep
+results/raw/
+results/*.csv
+results/*.json
+results/*.png
+!results/.gitkeep
+datasets/
+
+# Model weights (downloaded to ~/.deepface/weights by default)
+*.h5
+*.onnx
+*.pth

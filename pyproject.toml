@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beacon"
+version = "0.1.0"
+description = "BEACON: continuous face authentication with software privacy blur and trust-based de-authentication"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "Academic proof of concept" }
+dependencies = [
+    "numpy>=2.0,<3",
+    "PyYAML>=6.0,<7",
+    "opencv-contrib-python-headless>=4.9",  # deepface pins the headless contrib build
+    "Pillow>=10",
+    "deepface==0.0.102",
+    "retina-face==0.0.19",
+    "tensorflow>=2.16,<2.22",
+    "tf-keras>=2.16,<2.22",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "scikit-image>=0.22"]
+
+[project.scripts]
+beacon = "beacon.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m \"not models and not webcam and not real_lock\""
+markers = [
+    "models: needs downloaded DeepFace weights (slow)",
+    "webcam: needs a working camera and a person in front of it",
+    "real_lock: calls the real OS lock API; needs BEACON_ALLOW_REAL_LOCK=1",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
