@@ -296,6 +296,8 @@ def _parse(raw: dict[str, Any]) -> BeaconConfig:
             f"trust.suspect_below ({trust.suspect_below}) must be < trust.trusted_above "
             f"({trust.trusted_above}) so that hysteresis exists"
         )
+    if trust.initial < trust.lock_below:
+        raise ConfigError("trust.initial must be >= trust.lock_below, otherwise BEACON locks at start-up")
     if trust.trusted_above >= 1.0:
         raise ConfigError("trust.trusted_above must be < 1.0, otherwise TRUSTED is unreachable")
 

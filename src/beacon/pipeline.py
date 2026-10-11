@@ -93,3 +93,17 @@ class Pipeline:
         return result(
             1, det.box, sim, match, "match" if match else "mismatch", live, emb if want_embedding else None
         )
+
+
+def build_real_pipeline(cfg) -> Pipeline:
+    """Construct the pipeline with the real DeepFace models (loads weights)."""
+    import os
+
+    os.environ.setdefault("DEEPFACE_BACKEND_ENGINE", cfg.models.backend_engine)
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    from .face_engine import DeepFaceBackend
+    from .liveness import FasnetBackend
+
+    engine = FaceEngine(DeepFaceBackend(cfg.models), cfg.identity, cfg.models)
+    checker = LivenessChecker(FasnetBackend(cfg.models), cfg.liveness, cfg.models.liveness_crop_padding)
+    return Pipeline(cfg.privacy, engine, checker)

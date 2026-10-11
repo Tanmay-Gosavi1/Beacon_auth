@@ -29,6 +29,19 @@ class FakeClock:
         return self.t
 
 
+@pytest.fixture(autouse=True)
+def forbid_real_lock_api(request, monkeypatch):
+    """Every test except those marked real_lock gets a booby-trapped OS lock call."""
+    if request.node.get_closest_marker("real_lock"):
+        return
+    from beacon import session_lock
+
+    def boom():
+        raise AssertionError("real LockWorkStation must never be called by the default test suite")
+
+    monkeypatch.setattr(session_lock, "_lock_workstation", boom)
+
+
 @pytest.fixture
 def fake_clock() -> FakeClock:
     return FakeClock()
