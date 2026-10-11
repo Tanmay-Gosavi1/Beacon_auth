@@ -19,11 +19,9 @@ profiles/*
 !profiles/.gitkeep
 logs/*
 !logs/.gitkeep
+# raw per-frame scores, per-trial events and calibration embeddings stay local;
+# aggregated metrics/plots (no biometric data) may be committed
 results/raw/
-results/*.csv
-results/*.json
-results/*.png
-!results/.gitkeep
 datasets/
 
 # Model weights (downloaded to ~/.deepface/weights by default)
