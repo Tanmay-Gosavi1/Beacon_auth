@@ -66,7 +66,19 @@ face-present flag with N-frame aggregation (`trust.mode: binary_baseline`), **no
 Produced by `scripts/calibrate_blur.py lfw` (reproducible: seed 0). LFW = Labeled Faces in the
 Wild; these are **not** webcam numbers. Files: `docs/evidence/lfw_blur_sweep_*.csv/png`.
 
-_See Section 4.1 tables below (filled from the committed CSVs)._
+| Run | σ | σ / face width | detect rate | genuine mean ± sd | impostor mean ± sd | AUC | EER |
+|---|---|---|---|---|---|---|---|
+| ×1 (face ≈ 95 px) | 0 | 0.000 | 1.00 | 0.56 ± 0.13 | 0.08 ± 0.10 | 0.997 | 0.031 |
+| ×1 | 2 | 0.021 | 1.00 | 0.50 ± 0.14 | 0.12 ± 0.12 | 0.973 | 0.062 |
+| ×1 | 3 | 0.032 | 1.00 | 0.74 ± 0.20 | 0.53 ± 0.31 | 0.706 | 0.411 |
+| ×1 | 6 | 0.064 | 1.00 | 0.99 ± 0.00 | 0.99 ± 0.00 | 0.733 | 0.338 |
+| ×2 (face ≈ 190 px) | 0 | 0.000 | 1.00 | 0.55 ± 0.12 | 0.08 ± 0.10 | 0.997 | 0.034 |
+| ×2 | 4 | 0.021 | 1.00 | 0.51 ± 0.14 | 0.11 ± 0.12 | 0.981 | 0.056 |
+| ×2 | 5 | 0.027 | 1.00 | 0.53 ± 0.16 | 0.23 ± 0.21 | 0.882 | 0.183 |
+| ×2 | 6 | 0.032 | 1.00 | 0.72 ± 0.19 | 0.50 ± 0.30 | 0.709 | 0.394 |
+
+Conditions: Linux container, CPU, deepface 0.0.102 / TF 2.21.0, 8 identities × 5 images, 80 genuine and
+700 impostor pairs per σ, seed 0, kernel = 6σ+1. Full rows in `docs/evidence/lfw_blur_sweep_x{1,2}.csv`.
 
 ### 4.2 Webcam sweep (to be measured)
 

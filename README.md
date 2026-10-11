@@ -520,17 +520,32 @@ For E7/E8 also collect `scores` frames during the attack (`--label genuine`, a s
 
 ### 11.1 What is already known (offline, public data)
 
-ArcFace on blurred faces was measured on Labeled Faces in the Wild (8 identities × 5 images, faces ≈ 96 px wide, sharp-vs-sharp and blurred-vs-blurred pairs at the *same* σ):
+Measured in the development container with the committed script (`calibrate_blur.py lfw`, seed 0, 8 LFW identities × 5 images; genuine/impostor pairs compare blurred vs blurred at the *same* σ). Raw files: [`docs/evidence/`](docs/evidence/).
 
-| σ (px) | σ / face width | detect rate | genuine sim | impostor sim | ROC AUC |
-|---|---|---|---|---|---|
-| 0 | 0 | 1.00 | 0.50 | 0.08 | 0.994 |
-| 2 | 0.02 | 1.00 | 0.47 | 0.10 | 0.981 |
-| 3 | 0.03 | 1.00 | 0.61 | 0.40 | 0.734 |
-| 4 | 0.04 | 1.00 | 0.96 | 0.94 | 0.627 |
-| 6 | 0.06 | 1.00 | 0.995 | 0.993 | 0.709 |
+**Native LFW size (faces ≈ 95 px wide)** — `--upscale 1`
 
-RetinaFace keeps detecting every face; ArcFace **collapses**: beyond ~2–3 % of the face width, all blurred faces embed alike and impostors score as high as the genuine user. Blur must therefore be chosen relative to the face size your webcam produces, and the enrollment collapse guard (Section 6) rejects templates built past that point. A second sweep with LFW upscaled 2× (faces ≈ 190 px, closer to a 720p webcam) is in [`docs/evidence/`](docs/evidence/) and [`docs/RESULTS_TEMPLATE.md`](docs/RESULTS_TEMPLATE.md). **These are LFW numbers, not webcam numbers.**
+| σ (px) | σ / face width | detect rate | genuine sim | impostor sim | ROC AUC | EER |
+|---|---|---|---|---|---|---|
+| 0 | 0.000 | 1.00 | 0.56 ± 0.13 | 0.08 ± 0.10 | 0.997 | 0.03 |
+| 1 | 0.011 | 1.00 | 0.54 ± 0.12 | 0.07 ± 0.10 | 0.998 | 0.02 |
+| 2 | 0.021 | 1.00 | 0.50 ± 0.14 | 0.12 ± 0.12 | 0.973 | 0.06 |
+| 3 | 0.032 | 1.00 | 0.74 ± 0.20 | 0.53 ± 0.31 | 0.706 | 0.41 |
+| 4 | 0.042 | 1.00 | 0.94 ± 0.12 | 0.90 ± 0.15 | 0.651 | 0.40 |
+| 6 | 0.064 | 1.00 | 0.99 ± 0.00 | 0.99 ± 0.00 | 0.733 | 0.34 |
+
+**Upscaled 2× (faces ≈ 190 px, closer to a 720p webcam)** — `--upscale 2`
+
+| σ (px) | σ / face width | detect rate | genuine sim | impostor sim | ROC AUC | EER |
+|---|---|---|---|---|---|---|
+| 0 | 0.000 | 1.00 | 0.55 ± 0.12 | 0.08 ± 0.10 | 0.997 | 0.03 |
+| 2 | 0.011 | 1.00 | 0.54 ± 0.12 | 0.07 ± 0.10 | 0.998 | 0.02 |
+| 3 | 0.016 | 1.00 | 0.54 ± 0.13 | 0.08 ± 0.09 | 0.998 | 0.03 |
+| 4 | 0.021 | 1.00 | 0.51 ± 0.14 | 0.11 ± 0.12 | 0.981 | 0.06 |
+| 5 | 0.027 | 1.00 | 0.53 ± 0.16 | 0.23 ± 0.21 | 0.882 | 0.18 |
+| 6 | 0.032 | 1.00 | 0.72 ± 0.19 | 0.50 ± 0.30 | 0.709 | 0.39 |
+| 8 | 0.042 | 1.00 | 0.93 ± 0.12 | 0.89 ± 0.15 | 0.653 | 0.40 |
+
+RetinaFace detected every face at every σ. ArcFace **collapses** at the same *relative* blur in both runs: separation is near-perfect up to σ ≈ 2 % of the face width and is gone by ≈ 3 %, where all blurred faces embed alike and impostors score almost as high as the genuine user (≈ 0.99 at the heaviest blur). So the usable σ scales with the face size your webcam produces (≈ 4 px for a ~190 px face). The enrollment collapse guard (Section 6) rejects templates built past that point. **These are LFW numbers, not webcam numbers**; ~1 s per image is CPU time in this container.
 
 ### 11.2 Run the sweep
 
@@ -657,7 +672,7 @@ Linux support would be another adapter (e.g. `loginctl lock-session`) behind the
 - **Compromised OS or process:** the sharp frame exists in memory before blurring. Malware with that access can capture it.
 - **Memory erasure:** releasing Python references lets the garbage collector free the frame, but does not guarantee the bytes are wiped from RAM.
 - **Embeddings are biometric data:** a stolen profile is sensitive even without photos. Profiles are not encrypted, and the checksum detects corruption, not deliberate tampering. Cancelable / revocable templates are future work.
-- **Blur vs recognition trade-off:** past ~2–3 % of the face width ArcFace stops distinguishing people (Section 11). Too much blur turns BEACON into "any face is accepted", which the collapse guard and threshold calibration exist to catch.
+- **Blur vs recognition trade-off:** past ~2–3 % of the face width ArcFace stops distinguishing people (measured on LFW at two face sizes) (Section 11). Too much blur turns BEACON into "any face is accepted", which the collapse guard and threshold calibration exist to catch.
 - **Liveness is probabilistic:** MiniFASNet can be fooled by good masks or replays and can flag real users. It is also sensitive to the face box: on the test photo, a box from a σ=3 frame gave UNCERTAIN where a σ=1.5 box gave LIVE. Measure it with E7/E8 and the `scores` liveness counts.
 - **Lighting and pose:** low light, backlight, glasses glare and extreme angles reduce detection and raise false locks.
 - **Physical attacks within the window:** an attacker who acts before trust drops (a few seconds) still has that window.

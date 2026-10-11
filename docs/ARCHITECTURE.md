@@ -95,10 +95,11 @@ degenerate box → `UNCERTAIN/no_crop`; slower than `liveness.timeout_s` →
 
 ### Blur strength and ArcFace (measured, not assumed)
 
-ArcFace is far less blur-tolerant than RetinaFace. On LFW faces (~96 px wide), genuine vs
-impostor ROC AUC was 0.994 at σ=0, 0.981 at σ=2, 0.734 at σ=3, 0.627 at σ=4. Above roughly
-σ ≈ 2–3 % of the face width **every blurred face embeds to nearly the same point**: impostor
-similarity rose to 0.94–0.99, i.e. *everyone matches everyone*. Consequences built into
+ArcFace is far less blur-tolerant than RetinaFace (`calibrate_blur.py lfw`, 8 identities × 5
+images, `docs/evidence/`). Faces ≈ 95 px: AUC 0.997 (σ=0), 0.973 (σ=2), 0.706 (σ=3). Faces ≈ 190 px:
+AUC 0.998 (σ=3), 0.882 (σ=5), 0.709 (σ=6). In both runs separation is lost at σ ≈ 3 % of the face
+width; beyond that **every blurred face embeds to nearly the same point** and impostor similarity
+rises to 0.9–0.99, i.e. *everyone matches everyone*. Detection stayed at 100 % throughout. Consequences built into
 the code:
 
 1. Enrollment and runtime must use identical blur – the profile stores `blur_kernel` and
