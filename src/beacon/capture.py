@@ -13,6 +13,10 @@ from .config import CameraConfig
 log = logging.getLogger(__name__)
 
 
+WARMUP_S = 1.0
+_WARMUP_MAX_READS = 120
+
+
 class CameraError(RuntimeError):
     """The camera could not be opened, or stopped delivering frames."""
 
@@ -47,10 +51,17 @@ class Camera:
         cfg: CameraConfig,
         factory: Callable[[int], VideoSource] = _opencv_factory,
         clock: Callable[[], float] = time.monotonic,
+        warmup_s: float | None = None,
     ) -> None:
         self.cfg = cfg
         self._factory = factory
         self._clock = clock
+        # Webcams adjust exposure for ~1 s after opening; on the team's camera the first
+        # frames were over-exposed (face brightness 92 vs ~45) and scored 0.38 instead of
+        # ~0.92. Those frames are discarded. Injected test factories default to no warm-up.
+        if warmup_s is None:
+            warmup_s = WARMUP_S if factory is _opencv_factory else 0.0
+        self.warmup_s = warmup_s
         self._cap: VideoSource | None = None
         self._last_ok: float | None = None
 
@@ -76,6 +87,12 @@ class Camera:
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._cap = cap
         self._last_ok = self._clock()
+        if self.warmup_s > 0:
+            start = self._clock()
+            for _ in range(_WARMUP_MAX_READS):
+                cap.read()
+                if self._clock() - start >= self.warmup_s:
+                    break
         log.info("camera %d opened", self.cfg.index)
         return self
 

@@ -76,3 +76,16 @@ def test_camera_released_on_exception(config, fake_clock):
 def test_read_when_closed(config):
     with pytest.raises(CameraError, match="not open"):
         Camera(config.camera).read()
+
+
+def test_warmup_discards_first_frames(config, fake_clock):
+    frames = [np.full((4, 4, 3), i, np.uint8) for i in range(20)]
+    fake = FakeCapture(frames, clock=fake_clock, step=0.1)
+    with Camera(config.camera, factory=lambda i: fake, clock=fake_clock, warmup_s=1.0) as cam:
+        f, _ = cam.read()
+    assert f[0, 0, 0] == 10  # 10 reads x 0.1 s were discarded
+
+
+def test_injected_factories_have_no_warmup(config):
+    assert Camera(config.camera, factory=lambda i: None).warmup_s == 0.0
+    assert Camera(config.camera).warmup_s == 1.0
