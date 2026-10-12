@@ -47,7 +47,11 @@ def cmd_scores(args, cfg) -> int:
             "blur_kernel": cfg.privacy.blur_kernel, "blur_sigma": cfg.privacy.blur_sigma}
     input(f"{args.label} participant {args.participant}: sit in front of the camera, move naturally. Enter to start...")
     with Camera(cfg.camera) as cam:
-        rows = collect_scores(pipe, lambda: cam.read()[0], profile.template, args.frames, meta)
+        def progress(r):
+            print(f"  frame {r['frame'] + 1:3d}/{args.frames}  faces={r['face_count']}  "
+                  f"similarity={r['similarity'] or '-':>8}  liveness={r['liveness'] or '-'}", flush=True)
+
+        rows = collect_scores(pipe, lambda: cam.read()[0], profile.template, args.frames, meta, on_row=progress)
     out = Path(cfg.storage.results_dir) / "raw" / "scores.csv"
     n = append_rows(out, SCORE_FIELDS, rows)
     single = sum(1 for r in rows if r["face_count"] == 1)

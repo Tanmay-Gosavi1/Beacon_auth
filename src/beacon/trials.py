@@ -94,6 +94,7 @@ def collect_scores(
     *,
     sleep: Callable[[float], None] = time.sleep,
     interval_s: float = 0.2,
+    on_row: Callable[[dict], None] | None = None,
 ) -> list[dict]:
     """Record the similarity of every single-face frame (no images are kept)."""
     rows = []
@@ -108,6 +109,8 @@ def collect_scores(
             "liveness_conf": "" if not r.liveness or r.liveness.confidence is None else f"{r.liveness.confidence:.4f}",
             "unix_time": f"{time.time():.3f}",
         })
+        if on_row:
+            on_row(rows[-1])
         sleep(interval_s)
     return rows
 
