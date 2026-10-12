@@ -42,6 +42,8 @@ class Detection:
     # Aligned face crop taken FROM THE BLURRED FRAME by the detector (RGB, float in [0, 1]
     # or uint8). Used only for embedding; never derived from a sharp frame.
     aligned_face: np.ndarray
+    # Eye/nose/mouth points (full-frame pixel coords) when the detector provides them.
+    landmarks: dict | None = None
 
 
 class FaceBackend(Protocol):
@@ -92,6 +94,50 @@ class FaceEngine:
         return l2_normalize(self.backend.embed(detection.aligned_face))
 
 
+# RetinaFace runs on a copy of the BLURRED frame whose longer side is at most this many
+# pixels. Measured on a 1280x720 frame (CPU): deepface's default path upscales the frame
+# to 1820x1024 and took 1470 ms; at 640x360 without upscaling it took 202 ms. Boxes and
+# landmarks are scaled back, so alignment and cropping still use the full-resolution
+# blurred frame. A 80 px face becomes 40 px at this size, well within RetinaFace's range.
+DETECT_MAX_SIDE = 640
+
+
+def _make_fast_retinaface_client(max_side: int):
+    """A deepface Detector that runs RetinaFace on a downscaled copy without upscaling."""
+    import cv2
+    from deepface.models.Detector import FacialAreaRegion
+    from deepface.models.face_detection.RetinaFace import RetinaFaceClient
+    from retinaface import RetinaFace as rf
+
+    class FastRetinaFaceClient(RetinaFaceClient):
+        def detect_faces(self, img):
+            h, w = img.shape[:2]
+            scale = min(1.0, max_side / max(h, w))
+            small = img if scale == 1.0 else cv2.resize(img, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
+            obj = rf.detect_faces(small, model=self.model, threshold=0.9, allow_upscaling=False)
+            if not isinstance(obj, dict):
+                return []
+            inv = 1.0 / scale
+
+            def pt(p):
+                return None if p is None else (int(round(p[0] * inv)), int(round(p[1] * inv)))
+
+            out = []
+            for face in obj.values():
+                x1, y1, x2, y2 = face["facial_area"]
+                lm = face["landmarks"]
+                out.append(FacialAreaRegion(
+                    x=int(round(x1 * inv)), y=int(round(y1 * inv)),
+                    w=int(round((x2 - x1) * inv)), h=int(round((y2 - y1) * inv)),
+                    left_eye=pt(lm["left_eye"]), right_eye=pt(lm["right_eye"]),
+                    confidence=float(face["score"]), nose=pt(lm.get("nose")),
+                    mouth_left=pt(lm.get("mouth_left")), mouth_right=pt(lm.get("mouth_right")),
+                ))
+            return out
+
+    return FastRetinaFaceClient()
+
+
 class DeepFaceBackend:
     """RetinaFace detection + ArcFace embedding through DeepFace (deepface 0.0.102).
 
@@ -117,6 +163,10 @@ class DeepFaceBackend:
         self.recognizer = models.recognizer
         # Load both models once up-front so the first frame is not slow.
         modeling.build_model(task="face_detector", model_name=self.detector)
+        if self.detector == "retinaface":
+            # deepface caches detector instances by name; replace the default client with
+            # the downscaling one so extract_faces() keeps doing alignment as before.
+            modeling.cached_models["face_detector"]["retinaface"] = _make_fast_retinaface_client(DETECT_MAX_SIDE)
         self._rec_model = modeling.build_model(task="facial_recognition", model_name=self.recognizer)
 
     @property
@@ -134,7 +184,8 @@ class DeepFaceBackend:
         for f in faces:
             a = f["facial_area"]
             box = FaceBox(int(a["x"]), int(a["y"]), int(a["w"]), int(a["h"]), float(f["confidence"]))
-            out.append(Detection(box=box, aligned_face=f["face"]))
+            lm = {k: a.get(k) for k in ("left_eye", "right_eye", "nose", "mouth_left", "mouth_right")}
+            out.append(Detection(box=box, aligned_face=f["face"], landmarks=lm))
         return out
 
     def embed(self, aligned_face: np.ndarray) -> np.ndarray:

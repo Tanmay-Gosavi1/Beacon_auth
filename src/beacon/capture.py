@@ -70,6 +70,10 @@ class Camera:
             )
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.cfg.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cfg.height)
+        # Keep at most one queued frame so a slow pipeline analyses a recent frame,
+        # not one from seconds ago (matters for departure-to-lock timing). Ignored by
+        # backends that do not support it.
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._cap = cap
         self._last_ok = self._clock()
         log.info("camera %d opened", self.cfg.index)

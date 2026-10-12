@@ -142,3 +142,24 @@ def test_real_backends_only_see_blurred_frames(cfg, backends, face_img):
     assert seen[0] is r.blurred.image
     assert not np.shares_memory(seen[0], face_img)
     assert not np.shares_memory(seen[1], face_img)
+
+
+def test_fast_detector_on_720p_frame_maps_back_to_full_resolution(backends, cfg):
+    """RetinaFace runs on a <=640 px copy; boxes/landmarks come back in full-frame pixels."""
+    import cv2
+
+    from beacon.face_engine import DETECT_MAX_SIDE
+    from beacon.privacy import blur_with
+
+    fb, _ = backends
+    face = cv2.cvtColor(skimage_data.astronaut(), cv2.COLOR_RGB2BGR)
+    frame = np.full((720, 1280, 3), 90, np.uint8)
+    frame[104:616, 384:896] = face  # 512x512 photo placed in a 720p frame
+    dets = fb.detect(blur_with(frame, cfg.privacy).image)
+    assert DETECT_MAX_SIDE == 640
+    assert len(dets) == 1
+    b = dets[0].box
+    assert 384 + 150 < b.x < 384 + 210 and 104 + 30 < b.y < 104 + 100  # face sits at ~(179, 60) in the photo
+    lm = dets[0].landmarks
+    assert lm["left_eye"] and lm["right_eye"] and lm["nose"]
+    assert b.x <= lm["nose"][0] <= b.x + b.w
