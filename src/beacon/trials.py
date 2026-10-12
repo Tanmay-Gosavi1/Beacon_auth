@@ -325,3 +325,76 @@ def read_csv(path: Path) -> list[dict]:
         return []
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
+
+
+def replay_sessions(rows: list[dict], cfg: BeaconConfig, thresholds: Iterable[float], loop_minutes: float = 30.0) -> list[dict]:
+    """Session-level effect of a threshold: replay recorded score sequences through the trust engine.
+
+    Each scores session (same session_id) is replayed in recorded order with its measured frame
+    interval. Genuine sessions are looped from every starting offset for ``loop_minutes`` and
+    false lock requests are counted (per hour). Impostor sessions start at trust = initial (an
+    impostor sitting down at an unlocked machine) and the time to the first lock is measured.
+    Frames with !=1 face are replayed as ABSENT/MULTI, exactly as the runtime would see them.
+    """
+    from .liveness import Liveness
+    from .trust import classify_evidence
+
+    sessions: dict[str, list[dict]] = {}
+    for r in rows:
+        if r.get("label") in ("genuine", "impostor"):
+            sessions.setdefault(r.get("session_id", ""), []).append(r)
+
+    def frames(sess):
+        out = []
+        for r in sorted(sess, key=lambda r: int(r.get("frame") or 0)):
+            live = Liveness(r["liveness"]) if r.get("liveness") in ("LIVE", "SPOOF", "UNCERTAIN") else None
+            out.append((int(r.get("face_count") or 0), _num(r.get("similarity")), live))
+        times = [_num(r.get("unix_time")) for r in sorted(sess, key=lambda r: int(r.get("frame") or 0))]
+        diffs = [b - a for a, b in zip(times, times[1:]) if a is not None and b is not None and b > a]
+        return out, (float(np.median(diffs)) if diffs else 1.0)
+
+    results = []
+    for thr in thresholds:
+        g_locks = g_hours = 0.0
+        imp_times: list[float | None] = []
+        for sess in sessions.values():
+            label = sess[0]["label"]
+            seq, dt = frames(sess)
+            if not seq:
+                continue
+
+            def evidence(f):
+                n, sim, live = f
+                match = None if n != 1 or sim is None else sim >= thr
+                return classify_evidence(n, match, live), n, match
+
+            starts = range(len(seq)) if label == "genuine" else range(len(seq))
+            for off in starts:
+                t = [0.0]
+                eng = TrustEngine(cfg.trust, cfg.liveness.spoof_lock_count, clock=lambda: t[0])
+                steps = int(loop_minutes * 60 / dt) if label == "genuine" else len(seq) * 3
+                first_lock = None
+                for k in range(steps):
+                    t[0] += dt
+                    ev, n, match = evidence(seq[(off + k) % len(seq)])
+                    d = eng.observe(Observation(ev, face_count=n, match=match, t=t[0]))
+                    if d.lock_requested and first_lock is None:
+                        first_lock = t[0]
+                        if label == "impostor":
+                            break
+                if label == "genuine":
+                    g_locks += eng.lock_requests
+                    g_hours += steps * dt / 3600
+                else:
+                    imp_times.append(first_lock)
+        lat = latency_stats(imp_times, target_s=6.0)
+        results.append({
+            "threshold": thr,
+            "genuine_false_locks_per_hour": (g_locks / g_hours) if g_hours else None,
+            "genuine_hours_replayed": g_hours,
+            "impostor_starts": lat.n_trials,
+            "impostor_locked": lat.n_locked,
+            "impostor_time_to_lock_median_s": lat.median_s,
+            "impostor_time_to_lock_worst_s": lat.worst_s,
+        })
+    return results

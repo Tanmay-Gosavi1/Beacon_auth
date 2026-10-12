@@ -138,3 +138,18 @@ def test_summarize_scores_discloses_same_data():
 def test_summarize_scores_needs_both_labels():
     rows = [{"label": "genuine", "similarity": "0.5", "face_count": "1", "participant": "a", "split": "test"}]
     assert "need genuine AND impostor" in summarize_scores(rows, 0.01)["note"]
+
+
+def test_replay_sessions(config):
+    from beacon.trials import replay_sessions
+
+    def sess(sid, label, sims):
+        return [{"session_id": sid, "label": label, "frame": k, "face_count": "1", "similarity": str(s),
+                 "liveness": "LIVE", "unix_time": str(1000 + 3.6 * k)} for k, s in enumerate(sims)]
+
+    rows = sess("g", "genuine", [0.8, 0.85, 0.5, 0.82]) + sess("i", "impostor", [0.3, 0.35, 0.48, 0.2])
+    low, high = replay_sessions(rows, config, [0.45, 0.6], loop_minutes=5)
+    assert low["genuine_false_locks_per_hour"] == 0.0          # 0.5 is accepted at 0.45
+    assert high["genuine_false_locks_per_hour"] > 0            # one 0.5 frame at 3.6 s/frame locks
+    assert low["impostor_locked"] == low["impostor_starts"] == 4
+    assert high["impostor_time_to_lock_worst_s"] == pytest.approx(3.6)

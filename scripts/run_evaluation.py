@@ -19,7 +19,7 @@ from beacon.config import load_config
 from beacon.evaluation import (
     environment_versions, equal_error_rate, plot_distributions, plot_latency, plot_roc, roc_curve, write_json,
 )
-from beacon.trials import SCENARIOS, read_csv, summarize_events, summarize_scores
+from beacon.trials import SCENARIOS, read_csv, replay_sessions, summarize_events, summarize_scores
 
 
 def main(argv=None) -> int:
@@ -56,6 +56,20 @@ def main(argv=None) -> int:
         if g and i:
             plot_roc(roc_curve(g, i), equal_error_rate(g, i), results / "roc.png")
             plot_distributions(g, i, rec.get("chosen_threshold"), results / "score_distributions.png")
+        # Session-level view: per-frame FAR/FRR alone is misleading because the trust engine
+        # integrates evidence over time. Replay the TEST sessions (or all, if no test split).
+        replay_rows = [r for r in score_rows if r.get("split") == "test"] or score_rows
+        cands = sorted({round(x, 3) for x in (0.40, 0.45, 0.50, 0.55, 0.60)} |
+                       ({round(rec["chosen_threshold"], 3)} if "chosen_threshold" in rec else set()))
+        replay = replay_sessions(replay_rows, cfg, cands)
+        metrics["session_replay"] = {"data": "test split" if replay_rows is not score_rows else "all scores (no test split)",
+                                     "results": replay}
+        print("\nsession-level replay through the trust engine (" + metrics["session_replay"]["data"] + "):")
+        print("  threshold  genuine false locks/hour  impostor locked  time-to-lock median / worst (s)")
+        for r in replay:
+            f = lambda v: "-" if v is None else f"{v:.1f}"  # noqa: E731
+            print(f"  {r['threshold']:.3f}      {f(r['genuine_false_locks_per_hour']):>8}               "
+                  f"{r['impostor_locked']}/{r['impostor_starts']}          {f(r['impostor_time_to_lock_median_s'])} / {f(r['impostor_time_to_lock_worst_s'])}")
         live = [r for r in score_rows if r.get("liveness")]
         metrics["liveness_labels_on_score_frames"] = {
             lab: sum(1 for r in live if r["liveness"] == lab) for lab in ("LIVE", "SPOOF", "UNCERTAIN")
