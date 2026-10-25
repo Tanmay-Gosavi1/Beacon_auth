@@ -169,3 +169,83 @@ def test_collect_samples_gives_up_after_max_attempts(make_pipeline, frame_480p):
     embs = collect_samples(pipe, lambda: frame_480p, lambda s: None, lambda s: None, 3,
                            poses=("a",), sleep=lambda s: None)
     assert embs == []
+
+
+class DummyPreview:
+    def __init__(self, stop_on_pose=None):
+        self.stop_requested = False
+        self.stop_on_pose = stop_on_pose
+        self.ready_called = []
+        self.samples_shown = []
+        self.completed = False
+
+    def wait_for_ready(self, pose_index, total_poses, pose_desc, read_frame, pipeline, pause_s=0.03):
+        self.ready_called.append((pose_index, pose_desc))
+        if self.stop_on_pose == pose_index:
+            self.stop_requested = True
+
+    def show_sample(self, r, pose_index, total_poses, pose_desc, got, needed, attempts, max_attempts, rejection):
+        self.samples_shown.append((pose_index, got, rejection))
+
+    def show_completed(self, total_samples):
+        self.completed = True
+
+    def close(self):
+        pass
+
+
+def test_collect_samples_with_preview(make_pipeline, frame_480p):
+    pipe, fb, lb = make_pipeline([(face(), USER_EMB)])
+    fb.faces = [(face(), USER_EMB)]
+    lb.result = (True, 0.95)
+    prev = DummyPreview()
+    embs = collect_samples(
+        pipe, lambda: frame_480p, lambda s: None, lambda s: None, 2,
+        poses=("front", "left"), sleep=lambda s: None, preview=prev,
+    )
+    assert len(embs) == 4
+    assert len(prev.ready_called) == 2
+    assert prev.ready_called[0] == (1, "front")
+    assert prev.ready_called[1] == (2, "left")
+    assert len(prev.samples_shown) == 4
+    assert prev.completed is True
+
+
+def test_collect_samples_preview_stop_requested(make_pipeline, frame_480p):
+    pipe, fb, lb = make_pipeline([(face(), USER_EMB)])
+    fb.faces = [(face(), USER_EMB)]
+    lb.result = (True, 0.95)
+    prev = DummyPreview(stop_on_pose=2)
+    embs = collect_samples(
+        pipe, lambda: frame_480p, lambda s: None, lambda s: None, 2,
+        poses=("pose1", "pose2", "pose3"), sleep=lambda s: None, preview=prev,
+    )
+    assert len(embs) == 2  # Only pose 1 completed, stopped at pose 2
+    assert len(prev.ready_called) == 2
+
+
+def test_check_positioning_frame(make_pipeline, frame_480p):
+    from beacon.preview import check_positioning_frame
+
+    pipe, fb, lb = make_pipeline([(face(), USER_EMB)])
+    # 0 faces
+    fb.faces = []
+    r = pipe.process(frame_480p, want_embedding=False)
+    assert check_positioning_frame(r) == "no face detected"
+
+    # 2 faces
+    fb.faces = [(face(), USER_EMB), (face(x=400), USER_EMB)]
+    r = pipe.process(frame_480p, want_embedding=False)
+    assert "more than one face" in check_positioning_frame(r)
+
+    # Face too small
+    fb.faces = [(face(w=50, h=50), USER_EMB)]
+    r = pipe.process(frame_480p, want_embedding=False)
+    assert "face too small" in check_positioning_frame(r)
+
+    # 1 valid face
+    fb.faces = [(face(), USER_EMB)]
+    lb.result = (True, 0.95)
+    r = pipe.process(frame_480p, want_embedding=False)
+    assert check_positioning_frame(r) is None
+

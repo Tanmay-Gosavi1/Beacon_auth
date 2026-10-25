@@ -107,3 +107,11 @@ def test_bad_config_is_reported(tmp_path, capsys):
     p.write_text("camera: {}\n")
     assert main(["--config", str(p), "run", "--user", "u"]) == 2
     assert "configuration error" in capsys.readouterr().err
+
+
+def test_enroll_accepts_preview_flag(tmp_path, cfg_file, monkeypatch, capsys):
+    path, _ = cfg_file
+    monkeypatch.setattr("builtins.input", lambda *a: "no")
+    assert main(["--config", str(path), "enroll", "--user", "user_a", "--preview"]) == 1
+    assert "nothing was captured" in capsys.readouterr().out
+

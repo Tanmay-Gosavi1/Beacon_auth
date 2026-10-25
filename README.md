@@ -292,14 +292,15 @@ Global option: `python -m beacon --config path/to/other.yaml <command>`.
 ### 6.1 Enroll
 
 ```bash
-python -m beacon enroll --user ankit
+python -m beacon enroll --user ankit            # CLI-only guided capture
+python -m beacon enroll --user ankit --preview  # with live blurred camera preview window
 ```
 
 What happens:
 
 1. **Consent screen.** Explains what is stored (a template computed from blurred frames, locally), what is not (photos, video), and how to delete. Type `yes` to continue; anything else captures nothing.
-2. **Guided capture, 9 poses** (synopsis §3.4): straight, left, right, up, down, closer, further, a second lighting condition, and that lighting turned slightly. Press Enter at each prompt; `frames_per_pose` samples are collected.
-3. **Per-sample checks.** Rejected (with the reason printed) for: no face, more than one face, face narrower than `min_face_px`, liveness not `LIVE`.
+2. **Guided capture, 9 poses** (synopsis §3.4): straight, left, right, up, down, closer, further, a second lighting condition, and that lighting turned slightly. Press Enter at each prompt (or Space/Enter / click "Ready" in the `--preview` window); `frames_per_pose` samples are collected.
+3. **Per-sample checks.** Rejected (with the reason printed and displayed in the preview) for: no face, more than one face, face narrower than `min_face_px`, liveness not `LIVE`.
 4. **Embedding.** Each accepted frame goes through the runtime pipeline: blur → RetinaFace → ArcFace. Enrollment uses exactly the runtime blur.
 5. **Aggregation.** Embeddings are L2-normalised, averaged, and re-normalised (normalised-mean template).
 6. **Validation.** Fails if fewer than `min_samples` were accepted; if samples disagree (mean similarity to template < `min_template_similarity` — e.g. someone else in frame); or if samples are *nearly identical* (mean pairwise similarity > `collapse_similarity`), which is the signature of blur so strong that ArcFace no longer sees identity — a template like that would accept anyone.

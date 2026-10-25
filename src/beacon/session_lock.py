@@ -61,6 +61,34 @@ def _lock_workstation() -> int:
     return int(ctypes.windll.user32.LockWorkStation())  # type: ignore[attr-defined]
 
 
+def is_session_locked() -> bool | None:
+    """Return True if the Windows desktop is currently locked, False if active, None if unknown.
+
+    Uses OpenInputDesktop(): on a locked workstation the input desktop is the
+    WinLogon desktop, not the default. The call returns NULL when the calling
+    thread cannot access the current desktop — which happens when the screen is
+    locked. This is the lightest-weight method that does not require COM or WMI.
+
+    Returns None on non-Windows platforms or on any API error (caller treats as
+    "don't know" and does nothing).
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # OpenInputDesktop(dwFlags=0, fInherit=False, dwDesiredAccess=DESKTOP_READOBJECTS=0x0001)
+        hdesk = user32.OpenInputDesktop(0, False, 0x0001)
+        if hdesk:
+            user32.CloseDesktop(hdesk)
+            return False  # desktop is accessible -> screen is NOT locked
+        return True  # NULL -> screen is locked
+    except Exception:
+        return None
+
+
 class WindowsLock(LockAdapter):
     name = "windows"
     is_real = True
