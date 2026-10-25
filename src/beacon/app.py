@@ -15,8 +15,8 @@ from .capture import Camera, CameraError
 from .config import BeaconConfig, LoggingConfig
 from .pipeline import FrameResult, Pipeline
 from .privacy import BlurredFrame
-from .session_lock import LockAdapter, LockResult
-from .trust import Decision, Evidence, Observation, classify_evidence
+from .session_lock import LockAdapter, LockResult, is_session_locked
+from .trust import Decision, Evidence, Observation, State, classify_evidence
 
 log = logging.getLogger("beacon")
 
@@ -130,6 +130,9 @@ class Monitor:
         self.stop_event = threading.Event()
         self._next_reopen = 0.0
         self.frames = 0
+        # Re-lock tracking: did Beacon request a lock, and did the session
+        # subsequently get unlocked externally (e.g. by a different user typing the password)?
+        self._beacon_locked_session = False
 
     def _read(self) -> tuple[np.ndarray | None, float, str]:
         if not self.camera.is_open:
@@ -152,6 +155,35 @@ class Monitor:
             self._next_reopen = self._clock() + CAMERA_RETRY_S
             return None, self._clock(), "camera_lost"
 
+    def _check_unlock_relock(self) -> LockResult | None:
+        """Re-lock if Beacon locked the session and it was later externally unlocked.
+
+        Scenario: Beacon locks (trust=0, LOCK_REQUIRED). An impostor types the
+        Windows password, unlocking the screen. Beacon's state is still
+        LOCK_REQUIRED so no new lock transition fires. We detect the unlock and
+        force-reset trust to 0, then re-issue the lock immediately.
+
+        Only active when a REAL lock adapter is in use (not dry-run / mock).
+        """
+        if not self._beacon_locked_session:
+            return None
+        if not self.lock.is_real:
+            # Dry-run / mock: we never actually locked, so nothing to re-lock
+            return None
+        locked = is_session_locked()
+        if locked is True or locked is None:
+            # Screen still locked (or we can't tell) -- nothing to do
+            return None
+        # Screen is now UNLOCKED while Beacon is in LOCK_REQUIRED.
+        # Someone (possibly an impostor) unlocked it externally.
+        log.warning("SESSION UNLOCKED externally while LOCK_REQUIRED; re-locking immediately")
+        self._beacon_locked_session = False
+        # Force trust back to 0 and re-enter LOCK_REQUIRED so a new lock fires
+        self.engine.trust = 0.0
+        self.engine.state = State.LOCK_REQUIRED
+        self.engine.lock_requests += 1
+        return self.lock.request_lock()
+
     def step(self) -> StepOutcome:
         frame, t, cam_err = self._read()
         result: FrameResult | None = None
@@ -173,8 +205,18 @@ class Monitor:
             prev = self.engine.history[-1][1].value if self.engine.history else "?"
             log.info("STATE %s -> %s reason=%s trust=%.2f", prev, decision.state.value, decision.reason, decision.trust)
         if decision.lock_requested:
+            self._beacon_locked_session = True
             lock_result = self.lock.request_lock()
             log.warning("lock adapter=%s requested=%s detail=%s", lock_result.adapter, lock_result.requested, lock_result.detail)
+        else:
+            # Check if we need to re-lock after an external unlock
+            relock_result = self._check_unlock_relock()
+            if relock_result is not None:
+                lock_result = relock_result
+                log.warning("lock adapter=%s requested=%s detail=%s", lock_result.adapter, lock_result.requested, lock_result.detail)
+        # Trust rising back to TRUSTED clears the beacon-locked flag
+        if decision.state is State.TRUSTED:
+            self._beacon_locked_session = False
         if self.preview is not None:
             self.preview.show(result.blurred if result else None, decision, not self.lock.is_real)
             if self.preview.stop_requested:

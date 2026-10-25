@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import combinations
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -297,6 +297,35 @@ def sample_rejection(r: FrameResult) -> str | None:
     return None
 
 
+class EnrollmentPreview(Protocol):
+    stop_requested: bool
+
+    def wait_for_ready(
+        self,
+        pose_index: int,
+        total_poses: int,
+        pose_desc: str,
+        read_frame: Callable[[], np.ndarray],
+        pipeline: Pipeline,
+        pause_s: float = ...,
+    ) -> None: ...
+
+    def show_sample(
+        self,
+        r: FrameResult | None,
+        pose_index: int,
+        total_poses: int,
+        pose_desc: str,
+        got: int,
+        needed: int,
+        attempts: int,
+        max_attempts: int,
+        rejection: str | None,
+    ) -> None: ...
+
+    def close(self) -> None: ...
+
+
 def collect_samples(
     pipeline: Pipeline,
     read_frame: Callable[[], np.ndarray],
@@ -308,14 +337,32 @@ def collect_samples(
     max_attempts_per_pose: int | None = None,
     pause_s: float = 0.25,
     sleep: Callable[[float], None] = time.sleep,
+    preview: EnrollmentPreview | None = None,
 ) -> list[np.ndarray]:
     """Walk through the poses and return accepted embeddings (never images)."""
     max_attempts = max_attempts_per_pose or frames_per_pose * 6
     accepted: list[np.ndarray] = []
     for i, pose in enumerate(poses, 1):
-        prompt(f"[{i}/{len(poses)}] {pose}. Press Enter when ready...")
+        if preview is not None:
+            say(f"[{i}/{len(poses)}] {pose}. Position yourself and press Space/Enter or click Ready...")
+            preview.wait_for_ready(
+                pose_index=i,
+                total_poses=len(poses),
+                pose_desc=pose,
+                read_frame=read_frame,
+                pipeline=pipeline,
+                pause_s=min(0.05, pause_s),
+            )
+            if preview.stop_requested:
+                say("    enrollment stopped by user")
+                break
+        else:
+            prompt(f"[{i}/{len(poses)}] {pose}. Press Enter when ready...")
+
         got = attempts = 0
         while got < frames_per_pose and attempts < max_attempts:
+            if preview is not None and preview.stop_requested:
+                break
             attempts += 1
             frame = read_frame()
             r = pipeline.process(frame, want_embedding=True)
@@ -326,8 +373,24 @@ def collect_samples(
                 got += 1
             else:
                 say(f"    sample rejected: {why}")
+            if preview is not None:
+                preview.show_sample(
+                    r,
+                    pose_index=i,
+                    total_poses=len(poses),
+                    pose_desc=pose,
+                    got=got,
+                    needed=frames_per_pose,
+                    attempts=attempts,
+                    max_attempts=max_attempts,
+                    rejection=why,
+                )
             sleep(pause_s)
         say(f"    pose {i}: {got}/{frames_per_pose} samples accepted")
+        if preview is not None and preview.stop_requested:
+            break
+    if preview is not None and hasattr(preview, "show_completed"):
+        preview.show_completed(len(accepted))
     return accepted
 
 

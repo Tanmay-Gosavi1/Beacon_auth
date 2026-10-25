@@ -182,3 +182,33 @@ def test_observation_unverified_detail(make_pipeline, frame_480p):
     r = pipe.process(frame_480p, USER_EMB, 0.4)
     o = observation_from_result(r, 1.0)
     assert o.evidence is Evidence.UNVERIFIED and o.detail == "grey_zone"
+
+
+def test_relock_after_external_unlock(rig, monkeypatch):
+    """After Beacon locks, if screen is externally unlocked by impostor, re-lock fires.
+
+    Scenario: trust decays to LOCK_REQUIRED (user absent). Beacon issues a lock.
+    An impostor then types the Windows password (screen unlocks). Beacon must
+    detect this and immediately re-issue the lock.
+    """
+    import beacon.app as app_mod
+    from beacon.trust import State
+
+    mon, _, lock, _ = rig(faces=[])  # no face -> trust decays -> LOCK_REQUIRED
+    # Pretend this is a real lock adapter so _check_unlock_relock activates
+    lock.is_real = True
+    # While running, simulate the screen staying locked (is_real path; True = still locked)
+    monkeypatch.setattr(app_mod, "is_session_locked", lambda: True)
+    mon.run(max_seconds=20)
+    assert mon.engine.state is State.LOCK_REQUIRED
+    first_requests = len(lock.requests)
+    assert first_requests >= 1
+    assert mon._beacon_locked_session is True  # Beacon knows it locked the session
+
+    # Simulate: impostor types password -> screen is now unlocked
+    monkeypatch.setattr(app_mod, "is_session_locked", lambda: False)
+    # One more step: re-lock must fire
+    mon.step()
+    assert len(lock.requests) > first_requests, "expected a second lock after external unlock"
+
+

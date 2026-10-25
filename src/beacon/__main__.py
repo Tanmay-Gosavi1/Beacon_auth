@@ -64,14 +64,27 @@ def cmd_enroll(args) -> int:
         return 1
     print("Loading models (first run downloads weights)...")
     pipeline = build_real_pipeline(cfg)
-    with Camera(cfg.camera) as cam:
-        embeddings = collect_samples(
-            pipeline,
-            read_frame=lambda: cam.read()[0],
-            prompt=lambda s: input(s),
-            say=print,
-            frames_per_pose=cfg.enrollment.frames_per_pose,
-        )
+    preview = None
+    if getattr(args, "preview", False):
+        from .preview import TkEnrollmentPreview
+
+        preview = TkEnrollmentPreview(title=f"BEACON Enrollment - {user}")
+    try:
+        with Camera(cfg.camera) as cam:
+            embeddings = collect_samples(
+                pipeline,
+                read_frame=lambda: cam.read()[0],
+                prompt=lambda s: input(s),
+                say=print,
+                frames_per_pose=cfg.enrollment.frames_per_pose,
+                preview=preview,
+            )
+    finally:
+        if preview is not None:
+            preview.close()
+    if preview is not None and preview.stop_requested and len(embeddings) < cfg.enrollment.min_samples:
+        print("Enrollment cancelled by user.")
+        return 1
     profile = build_profile(user, embeddings, cfg)
     save_profile(profile, cfg.storage.profiles_dir, force=args.force)
     print(f"Enrolled '{user}' with {profile.n_samples} samples -> {path}")
@@ -174,6 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("enroll", help="guided enrollment")
     s.add_argument("--user", required=True)
     s.add_argument("--force", action="store_true", help="replace an existing profile")
+    s.add_argument("--preview", action="store_true", help="show blurred camera preview during enrollment")
     s.set_defaults(func=cmd_enroll)
 
     s = sub.add_parser("delete-profile", help="delete a user's profile")
@@ -212,8 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         from .capture import CameraError
         from .enrollment import EnrollmentError, ProfileError
+        from .preview import PreviewUnavailable
 
-        if isinstance(exc, (ProfileError, EnrollmentError, CameraError, ValueError)):
+        if isinstance(exc, (ProfileError, EnrollmentError, CameraError, PreviewUnavailable, ValueError)):
             print(f"error: {exc}", file=sys.stderr)
             return 1
         raise

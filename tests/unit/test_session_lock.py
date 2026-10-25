@@ -65,3 +65,52 @@ def test_guard_is_active():
 def test_env_gate(monkeypatch):
     monkeypatch.delenv("BEACON_ALLOW_REAL_LOCK", raising=False)
     assert session_lock.real_lock_allowed_in_tests() is False
+
+
+def test_is_session_locked_returns_none_on_non_windows(monkeypatch):
+    monkeypatch.setattr(session_lock.sys, "platform", "linux")
+    assert session_lock.is_session_locked() is None
+
+
+def test_is_session_locked_unlocked(monkeypatch):
+    """OpenInputDesktop returns a non-zero handle -> screen is NOT locked."""
+    monkeypatch.setattr(session_lock.sys, "platform", "win32")
+
+    class FakeUser32:
+        def OpenInputDesktop(self, flags, inherit, access):
+            return 0xDEAD  # non-zero handle
+
+        def CloseDesktop(self, h):
+            pass
+
+    import types
+    fake_ctypes = types.SimpleNamespace(windll=types.SimpleNamespace(user32=FakeUser32()))
+    import beacon.session_lock as sl
+    original = sl.__dict__.get("ctypes")
+    try:
+        sl.ctypes = fake_ctypes  # type: ignore[attr-defined]
+        assert session_lock.is_session_locked() is False
+    finally:
+        if original is not None:
+            sl.ctypes = original
+
+
+def test_is_session_locked_locked(monkeypatch):
+    """OpenInputDesktop returns NULL (0) -> screen IS locked."""
+    monkeypatch.setattr(session_lock.sys, "platform", "win32")
+
+    class FakeUser32Locked:
+        def OpenInputDesktop(self, flags, inherit, access):
+            return 0  # NULL -> locked
+
+        def CloseDesktop(self, h):
+            pass
+
+    import ctypes as real_ctypes
+    import types
+
+    fake_windll = types.SimpleNamespace(user32=FakeUser32Locked())
+    monkeypatch.setattr(real_ctypes, "windll", fake_windll)
+    assert session_lock.is_session_locked() is True
+
+
