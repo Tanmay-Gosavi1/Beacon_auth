@@ -11,7 +11,7 @@ from typing import Callable, Protocol
 
 import numpy as np
 
-from .capture import Camera, CameraError
+from .capture import Camera, CameraError, _opencv_factory
 from .config import BeaconConfig, LoggingConfig
 from .pipeline import FrameResult, Pipeline
 from .privacy import BlurredFrame
@@ -203,7 +203,15 @@ class Monitor:
         lock_result = None
         if decision.changed:
             prev = self.engine.history[-1][1].value if self.engine.history else "?"
-            log.info("STATE %s -> %s reason=%s trust=%.2f", prev, decision.state.value, decision.reason, decision.trust)
+            sim_str = f" sim={result.similarity:.2f}" if result and result.similarity is not None else ""
+            log.info(
+                "STATE %s -> %s reason=%s trust=%.2f%s",
+                prev,
+                decision.state.value,
+                decision.reason,
+                decision.trust,
+                sim_str,
+            )
         if decision.lock_requested:
             self._beacon_locked_session = True
             lock_result = self.lock.request_lock()
@@ -217,8 +225,16 @@ class Monitor:
         # Trust rising back to TRUSTED clears the beacon-locked flag
         if decision.state is State.TRUSTED:
             self._beacon_locked_session = False
-        if self.preview is not None:
-            self.preview.show(result.blurred if result else None, decision, not self.lock.is_real)
+        if self.preview is not None and not getattr(self, "_decoupled_preview", False):
+            try:
+                self.preview.show(
+                    result.blurred if result else None,
+                    decision,
+                    not self.lock.is_real,
+                    similarity=result.similarity if result else None,
+                )
+            except TypeError:
+                self.preview.show(result.blurred if result else None, decision, not self.lock.is_real)
             if self.preview.stop_requested:
                 self.stop_event.set()
         out = StepOutcome(decision, obs, lock_result, result)
@@ -230,19 +246,92 @@ class Monitor:
         """Run until stopped (preview 'q', Ctrl+C, stop_event, or max_seconds). Returns exit code."""
         start = self._clock()
         log.info("monitoring started (lock adapter: %s)", self.lock.name)
+
+        is_real_camera = getattr(self.camera, "_factory", None) is _opencv_factory
+
+        if self.preview is None or not is_real_camera:
+            try:
+                while not self.stop_event.is_set():
+                    if max_seconds is not None and self._clock() - start >= max_seconds:
+                        break
+                    self.step()
+            except KeyboardInterrupt:
+                log.info("Ctrl+C received")
+            finally:
+                self.camera.release()
+                if self.preview is not None:
+                    try:
+                        self.preview.close()
+                    except Exception:
+                        pass
+                log.info("monitoring stopped after %d frames; final state %s", self.frames, self.engine.state.value)
+            return 0
+
+        # Real OpenCV camera with preview: stream live blurred feed at smooth 30 FPS on main thread
+        # while inference and trust evaluation run continuously in background
+        self._decoupled_preview = True
+        import threading
+        from .privacy import blur_with
+        from .trust import Decision
+
+        decision_lock = threading.Lock()
+        latest_decision = Decision(self.engine.state, self.engine.trust, "starting", False, False)
+        latest_similarity = None
+
+        def _inference_worker():
+            nonlocal latest_decision, latest_similarity
+            try:
+                while not self.stop_event.is_set():
+                    if max_seconds is not None and self._clock() - start >= max_seconds:
+                        self.stop_event.set()
+                        break
+                    outcome = self.step()
+                    with decision_lock:
+                        latest_decision = outcome.decision
+                        latest_similarity = outcome.frame_result.similarity if outcome.frame_result else None
+            except Exception as exc:
+                log.error("inference worker error: %s", exc)
+                self.stop_event.set()
+
+        worker = threading.Thread(target=_inference_worker, daemon=True)
+        worker.start()
+
         try:
             while not self.stop_event.is_set():
                 if max_seconds is not None and self._clock() - start >= max_seconds:
                     break
-                self.step()
+
+                # Stream freshest frame with zero DirectShow queue lag
+                frame, _ = self.camera.get_latest_frame()
+                blurred = None
+                if frame is not None:
+                    try:
+                        blurred = blur_with(frame, self.pipeline.privacy)
+                    except Exception:
+                        pass
+                    del frame
+
+                with decision_lock:
+                    dec = latest_decision
+                    sim = latest_similarity
+
+                self.preview.show(blurred, dec, not self.lock.is_real, sim)
+                if self.preview.stop_requested:
+                    self.stop_event.set()
+                    break
+
+                self._sleep(0.03)
         except KeyboardInterrupt:
             log.info("Ctrl+C received")
+            self.stop_event.set()
         finally:
+            self.stop_event.set()
+            if worker.is_alive():
+                worker.join(timeout=2.0)
             self.camera.release()
-            if self.preview is not None:
-                try:
-                    self.preview.close()
-                except Exception:
-                    pass
+            try:
+                self.preview.close()
+            except Exception:
+                pass
             log.info("monitoring stopped after %d frames; final state %s", self.frames, self.engine.state.value)
         return 0

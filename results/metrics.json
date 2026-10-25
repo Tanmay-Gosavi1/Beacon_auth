@@ -1,0 +1,156 @@
+{
+  "generated_utc": "2026-10-25T11:16:27+00:00",
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows 10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "numpy": "2.4.6",
+    "opencv-contrib-python-headless": "5.0.0.93",
+    "deepface": "0.0.102",
+    "retina-face": "0.0.19",
+    "tensorflow": "2.21.0",
+    "tf-keras": "2.21.0"
+  },
+  "config": {
+    "blur_kernel": 31,
+    "blur_sigma": 3.0,
+    "configured_threshold": 0.55,
+    "trust": {
+      "mode": "continuous",
+      "initial": 1.0,
+      "tau_rise_s": 3.0,
+      "tau_absent_s": 2.5,
+      "tau_mismatch_s": 1.0,
+      "tau_multi_s": 1.5,
+      "absence_grace_s": 1.0,
+      "uncertain_hold_s": 2.0,
+      "max_dt_s": 2.0,
+      "suspect_below": 0.6,
+      "lock_below": 0.35,
+      "trusted_above": 0.7,
+      "multi_face_policy": "penalize",
+      "baseline_absent_frames": 10,
+      "baseline_require_match": false
+    },
+    "liveness": {
+      "live_min_confidence": 0.7,
+      "spoof_min_confidence": 0.7,
+      "spoof_lock_count": 1,
+      "timeout_s": 2.0
+    }
+  },
+  "conditions": [
+    "office"
+  ],
+  "project_targets": {
+    "departure_to_lock_s": "< 6 (aim < 4)",
+    "far": "team decides",
+    "frr": "team decides"
+  },
+  "recognition": {
+    "n_scores": {
+      "calibration_genuine": 39,
+      "calibration_impostor": 36,
+      "test_genuine": 39,
+      "test_impostor": 36
+    },
+    "participants": {
+      "genuine": [
+        "P1"
+      ],
+      "impostor": [
+        "P5"
+      ]
+    },
+    "threshold_tuned_on_reported_data": true,
+    "target_far": 0.0,
+    "chosen_threshold": 0.5855890000000001,
+    "far_at_threshold": 0.0,
+    "frr_at_threshold": 0.28205128205128205,
+    "eer": 0.08333333333333334,
+    "eer_threshold": 0.51836475,
+    "eer_note": "interpolated",
+    "auc": 0.9793447293447294,
+    "separation_dprime": 2.7585039328399477,
+    "genuine_mean": 0.7249964102564105,
+    "impostor_mean": 0.39679555555555557
+  },
+  "session_replay": {
+    "data": "all scores (no test split)",
+    "results": [
+      {
+        "threshold": 0.4,
+        "genuine_false_locks_per_hour": 19.659239547860885,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 48.21299886703491
+      },
+      {
+        "threshold": 0.45,
+        "genuine_false_locks_per_hour": 19.659239547860885,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 13.148999691009521
+      },
+      {
+        "threshold": 0.5,
+        "genuine_false_locks_per_hour": 39.31847909572177,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 8.765999794006348
+      },
+      {
+        "threshold": 0.55,
+        "genuine_false_locks_per_hour": 78.93709925324295,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 8.765999794006348
+      },
+      {
+        "threshold": 0.586,
+        "genuine_false_locks_per_hour": 59.52797725688156,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 4.382999897003174
+      },
+      {
+        "threshold": 0.6,
+        "genuine_false_locks_per_hour": 59.52797725688156,
+        "genuine_hours_replayed": 19.990600299835208,
+        "impostor_starts": 40,
+        "impostor_locked": 40,
+        "impostor_time_to_lock_median_s": 4.382999897003174,
+        "impostor_time_to_lock_worst_s": 4.382999897003174
+      }
+    ]
+  },
+  "liveness_labels_on_score_frames": {
+    "LIVE": 75,
+    "SPOOF": 0,
+    "UNCERTAIN": 0
+  },
+  "scenarios": "no events.csv data",
+  "scenarios_without_data": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "E7",
+    "E8",
+    "E9",
+    "E10"
+  ]
+}

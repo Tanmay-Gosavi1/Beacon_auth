@@ -76,11 +76,11 @@ class Pipeline:
         if det.box.w < idc.min_face_px or det.box.h < idc.min_face_px:
             return result(1, det.box, None, None, "face_too_small")
 
-        emb = self.engine.embed(blurred, det)
+        emb = self.engine.embed(blurred, det) if (want_embedding or template is not None) else None
         if template is None:
             live = self.liveness.check(sharp, det.box, blurred.shape)
             del sharp
-            return result(1, det.box, None, None, "enroll_sample", live, emb if want_embedding else None)
+            return result(1, det.box, None, None, "enroll_sample", live, emb)
 
         if threshold is None:
             raise ValueError("threshold is required when a template is given")

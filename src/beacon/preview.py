@@ -83,7 +83,13 @@ class TkPreview:
     def _stop(self) -> None:
         self.stop_requested = True
 
-    def show(self, blurred: BlurredFrame | None, decision: Decision, dry_run: bool) -> None:
+    def show(
+        self,
+        blurred: BlurredFrame | None,
+        decision: Decision,
+        dry_run: bool,
+        similarity: float | None = None,
+    ) -> None:
         if blurred is not None:
             img = require_blurred(blurred).image
             h, w = img.shape[:2]
@@ -98,8 +104,9 @@ class TkPreview:
         self.bar.delete("all")
         self.bar.create_rectangle(0, 0, int(width * decision.trust), 26, fill=_COLORS[decision.state], width=0)
         mode = "DRY-RUN (no real lock)" if dry_run else "REAL LOCK ENABLED"
+        sim_text = f"  sim={similarity:.2f}" if similarity is not None else ""
         self.text.configure(
-            text=f"{decision.state.value}  trust={decision.trust:.2f}  {decision.reason}\n{mode}   press q to quit"
+            text=f"{decision.state.value}  trust={decision.trust:.2f}{sim_text}  {decision.reason}\n{mode}   press q to quit"
         )
         self.root.update_idletasks()
         self.root.update()
@@ -262,9 +269,42 @@ class TkEnrollmentPreview:
         pipeline: Pipeline,
         pause_s: float = 0.03,
     ) -> None:
+        import threading
+        from .privacy import blur_with
+
         self._ready = False
         self.pose_header.configure(text=f"Pose [{pose_index}/{total_poses}]: {pose_desc}")
         self.btn.configure(state="normal", text="Ready / Capture (Space or Enter)", bg="#2e7d32")
+
+        worker_lock = threading.Lock()
+        latest_boxes: tuple[FaceBox, ...] = ()
+        latest_status: str = "Position yourself in front of the camera, then press Space/Enter or click Ready"
+        latest_box_color: str = "#f9a825"
+        worker_busy = False
+        worker_thread: threading.Thread | None = None
+
+        def _worker_task(f: np.ndarray) -> None:
+            nonlocal latest_boxes, latest_status, latest_box_color, worker_busy
+            try:
+                r = pipeline.process(f, want_embedding=False)
+                err = check_positioning_frame(r) if r else "pipeline error"
+                with worker_lock:
+                    latest_boxes = r.boxes if r else ()
+                    if err is None:
+                        latest_box_color = "#2e7d32"
+                        latest_status = "Status: Face in position! Press Space/Enter or click Ready"
+                    else:
+                        latest_box_color = "#f9a825"
+                        latest_status = f"Status: {err}\nPosition yourself, then press Space/Enter or click Ready"
+            except Exception:
+                with worker_lock:
+                    latest_boxes = ()
+                    latest_box_color = "#f9a825"
+                    latest_status = "Status: Positioning check...\nPosition yourself, then press Space/Enter or click Ready"
+            finally:
+                del f
+                with worker_lock:
+                    worker_busy = False
 
         while not self._ready and not self.stop_requested:
             cin = check_console_ready()
@@ -281,29 +321,38 @@ class TkEnrollmentPreview:
                 break
 
             try:
-                r = pipeline.process(frame, want_embedding=False)
+                blurred = blur_with(frame, pipeline.privacy)
             except Exception:
-                r = None
-            finally:
-                del frame
+                blurred = None
 
-            check_err = check_positioning_frame(r) if r else "pipeline error"
-            if check_err is None:
-                box_color = "#2e7d32"
-                status = "Status: Face in position! Press Space/Enter or click Ready"
-            else:
-                box_color = "#f9a825"
-                status = f"Status: {check_err}\nPosition yourself, then press Space/Enter or click Ready"
+            with worker_lock:
+                should_spawn = (not worker_busy) and (not self._ready) and (not self.stop_requested)
+                if should_spawn:
+                    worker_busy = True
+
+            if should_spawn:
+                worker_thread = threading.Thread(target=_worker_task, args=(frame.copy(),), daemon=True)
+                worker_thread.start()
+
+            del frame
+
+            with worker_lock:
+                boxes = latest_boxes
+                status = latest_status
+                box_color = latest_box_color
 
             progress = (pose_index - 1) / total_poses
             self.show_frame(
-                r.blurred if r else None,
-                boxes=r.boxes if r else (),
+                blurred,
+                boxes=boxes,
                 status_text=status,
                 status_color=box_color,
                 progress=progress,
             )
             time.sleep(pause_s)
+
+        if worker_thread is not None and worker_thread.is_alive():
+            worker_thread.join(timeout=3.0)
 
         if not self.stop_requested:
             self.btn.configure(state="disabled", text="Capturing samples...", bg="#555555")
