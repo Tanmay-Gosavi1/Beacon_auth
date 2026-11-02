@@ -1,0 +1,44 @@
+# BEACON AUTHENTICATION EVALUATION CONFIGURATION
+# Scientific evaluation and benchmarking configuration for Beacon Auth
+
+dataset:
+  name: "Labeled Faces in the Wild (LFW)"
+  base_dir: "evaluation/lfw_data"
+  images_dir: "evaluation/lfw_data/lfw-deepfunneled"
+  pairs_file: "evaluation/lfw_data/pairs.csv"
+  min_images_per_identity: 3
+  calibration_identities_count: 50
+  test_identities_count: 50
+  random_seed: 42
+
+enrollment:
+  samples_per_identity: 1    # Use first image for enrollment, rest for probes
+  aggregation_mode: "mean"   # "single" or "mean" if multiple samples used
+
+beacon:
+  config_file: "config.yaml"
+  production_threshold: 0.42
+  target_far: 0.01           # 1% target FAR for calibration operating threshold
+  use_gpu: false             # Standard CPU inference matches production default
+
+experiments:
+  genuine_authentication: true
+  impostor_authentication: true
+  multi_identity: true
+  blur_robustness: true
+  threshold_sensitivity: true
+  continuous_authentication_sim: true
+  standard_lfw_benchmark: true
+
+blur_sweep:
+  sigmas: [0.0, 1.0, 2.0, 3.0, 5.0]
+  kernel_mode: "auto"        # "auto" computes kernel as 2*ceil(3*sigma)+1, min 3
+
+paths:
+  results_raw: "evaluation/results/raw"
+  results_processed: "evaluation/results/processed"
+  results_metrics: "evaluation/results/metrics"
+  results_graphs: "evaluation/results/graphs"
+  results_logs: "evaluation/results/logs"
+  reports_dir: "evaluation/reports"
+

@@ -1,0 +1,42 @@
+# EXPERIMENT SPECIFIC CONFIGURATIONS
+
+experiment_1_genuine:
+  description: "Test Beacon authentication accuracy on genuine probes across enrolled users"
+  samples_per_user_enroll: 1
+  evaluate_all_remaining_probes: true
+
+experiment_2_impostor:
+  description: "Test Beacon rejection of unauthorized impostor attempts across enrolled users"
+  max_impostor_pairs_per_user: 10
+  balanced_sampling: true
+
+experiment_3_multi_identity:
+  description: "Evaluate per-user authentication consistency and identify outlier identities"
+  anonymize_identities_in_report: true
+
+experiment_4_blur_robustness:
+  description: "Evaluate impact of Gaussian blur on ArcFace/RetinaFace authentication performance"
+  levels:
+    - { name: "No Blur (Baseline)", sigma: 0.0, kernel: 3 }
+    - { name: "Beacon Default Blur", sigma: 1.0, kernel: 7 }
+    - { name: "Moderate Blur", sigma: 2.0, kernel: 13 }
+    - { name: "Strong Blur", sigma: 3.0, kernel: 19 }
+    - { name: "Severe Blur", sigma: 5.0, kernel: 31 }
+
+experiment_5_threshold_sensitivity:
+  description: "Evaluate performance metrics across threshold range [-0.2, 0.9] with step 0.02"
+  range_min: -0.20
+  range_max: 0.90
+  step: 0.02
+
+continuous_auth_evaluation:
+  description: "Simulate temporal authentication, trust score dynamics, and session lock triggers"
+  frame_interval_s: 0.25
+  scenarios:
+    - "authorized_continuous"
+    - "authorized_temporary_away"
+    - "impostor_immediate_takeover"
+    - "authorized_return"
+    - "temporary_detection_loss"
+    - "multi_face_shoulder_surfer"
+

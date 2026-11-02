@@ -1,0 +1,2 @@
+"""Beacon Auth Evaluation Package."""
+

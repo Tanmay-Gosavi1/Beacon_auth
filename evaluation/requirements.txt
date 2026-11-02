@@ -1,0 +1,15 @@
+# Beacon Auth Evaluation Framework Dependencies
+numpy>=2.0,<3
+PyYAML>=6.0,<7
+opencv-contrib-python-headless>=4.9
+Pillow>=10
+deepface==0.0.102
+retina-face==0.0.19
+tensorflow>=2.16,<2.22
+tf-keras>=2.16,<2.22
+pandas>=2.0
+matplotlib>=3.8
+scikit-learn>=1.4
+scipy>=1.11
+pytest>=8
+

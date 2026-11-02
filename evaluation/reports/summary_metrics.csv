@@ -1,0 +1,18 @@
+Metric,Value
+Operating Similarity Threshold,0.2451
+Overall Accuracy,87.36%
+Balanced Accuracy,88.73%
+False Acceptance Rate (FAR),1.33%
+False Rejection Rate (FRR),21.21%
+Genuine Acceptance Rate (GAR),78.79%
+Equal Error Rate (EER),2.50%
+EER Threshold,0.2784
+ROC-AUC,0.9982
+Decidability Index (d'),4.067
+Precision,98.73%
+Recall,78.79%
+F1-Score,0.8764
+Mean Genuine Score,0.5293
+Mean Impostor Score,0.0889
+Detection Success Rate,73.6%
+Median Latency (ms),1283.5

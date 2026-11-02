@@ -28,3 +28,7 @@ datasets/
 *.h5
 *.onnx
 *.pth
+
+.deepface/
+evaluation/lfw_data/
+evaluation/results/raw/
